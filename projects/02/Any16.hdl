@@ -1,0 +1,13 @@
+/**
+ * Check if any of the bits are positive
+ */
+
+CHIP Any16 {
+    IN a[16];
+    OUT out;
+
+    PARTS:
+    Or8Way(in=a[0..7], out=any1);
+    Or8Way(in=a[8..15], out=any2);
+    Or(a=any1, b=any2, out=out);
+}

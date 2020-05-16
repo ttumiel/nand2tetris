@@ -1,0 +1,11 @@
+/**
+ * Check if any if in has a leading 1
+ */
+
+CHIP IsNeg16 {
+    IN in[16];
+    OUT out;
+
+    PARTS:
+    And(a=in[15], b=true, out=out);
+}
