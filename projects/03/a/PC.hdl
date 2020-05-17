@@ -16,5 +16,22 @@ CHIP PC {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    // Increment
+    Add16(a=currentOut, b[0]=inc, out=incOut);
+
+    // Select previous output
+    Mux16(a=incOut, b=in, sel=load, out=loadOut);
+
+    // Reset
+    Mux16(a=loadOut, b=false, sel=reset, out=resOut); // This could be streamlined like in ALU-small
+
+    Or(a=load, b=reset, out=regLoad1);
+    Or(a=regLoad1, b=inc, out=regLoad);
+
+    Register(in=resOut, load=regLoad, out=currentOut);
+
+    // Similar Identity (could probably rename this into a new chip)
+    Not16(in=currentOut, out=tmp);
+    Not16(in=tmp, out=out);
+
 }

@@ -15,4 +15,10 @@ CHIP Bit {
 
     PARTS:
     // Put your code here:
+    Mux(a=outPrev, b=in, sel=load, out=val);
+    DFF(in=val, out=outPrev);
+
+    // Identity block due to limitations of attaching an output to input
+    Not(in=outPrev, out=tmp);
+    Not(in=tmp, out=out);
 }
