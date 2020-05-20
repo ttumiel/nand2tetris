@@ -41,9 +41,11 @@ CHIP CPU {
     PARTS:
     Not(in=instruction[15], out=loadA);
 
-    // Select whether to write to A ((instruction[5] & instruction[15]) or loadA) == instruction[5] or loadA
+    // Select whether to write to A
     Or(a=instruction[5], b=loadA, out=writeA);
-    Mux16(a=instruction, b=aluOut, sel=instruction[15], out=inA); // select input to A register (instruction or aluOut)
+
+    // select input to A register (instruction or aluOut)
+    Mux16(a=instruction, b=aluOut, sel=instruction[15], out=inA);
     ARegister(in=inA, load=writeA, out=outA); // A register
 
     And(a=instruction[4], b=instruction[15], out=writeD);
@@ -55,7 +57,7 @@ CHIP CPU {
         ny=instruction[8], f=instruction[7], no=instruction[6], out=aluOut,
         zr=aluZero, ng=aluNeg);
 
-    // Check branches
+    // Check for branching
     Or(a=aluZero, b=aluNeg, out=zeroOrNeg);
     Not(in=zeroOrNeg, out=greater);
     And(a=greater, b=instruction[0], out=jumpIfGreater);
@@ -65,14 +67,18 @@ CHIP CPU {
     Or(a=jumpIfEqual, b=jumpIfGreater, out=jump1);
     Or(a=jump1, b=jumpIfLess, out=jump);
 
-    And(a=instruction[15], b=jump, out=branchPC);// if branching and instruction[15]
+    And(a=instruction[15], b=jump, out=branchPC);
     Mux16(a=outA, b=false, sel=reset, out=pcResetOrJump);
-    PC(in=pcResetOrJump, load=branchPC, inc=true, reset=reset, out[0..14]=pc); // load PC when reset or when jump
+    PC(in=pcResetOrJump, load=branchPC, inc=true, reset=reset, out[0..14]=pc);
 
     // Write M
     And(a=instruction[3], b=instruction[15], out=writeM);
+
+    // Identity for output outM
     Not16(in=aluOut, out=notAluOut);
     Not16(in=notAluOut, out=outM);
+
+    // Identity for output addressM
     Not16(in=outA, out=notOutA);
     Not16(in=notOutA, out[0..14]=addressM);
 
