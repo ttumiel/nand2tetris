@@ -28,6 +28,24 @@ for line in lines:
 
 import re
 
+dests = {
+    'M': 1,
+    'D': 2,
+    'A': 4
+}
+
+jumps = {
+    'jgt': 1,
+    'jeq': 2,
+    'jge': 3,
+    'jlt': 4,
+    'jne': 5,
+    'jle': 6,
+    'jmp': 7,
+}
+
+VALID_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$')
+
 class SymbolTable:
     def __init__(self):
         registers = {f"R{v}":v for v in range(16)}
@@ -96,14 +114,8 @@ def assembler(filename):
                 assert set(symbol).issubset(VALID_CHARS)
                 st[symbol] = i - symbol_count
                 symbol_count += 1
-            # elif line[0] == '@' and not line[1:].isdecimal():
-            #     assert len(line[1:])>0 and set(line[1:]).issubset(VALID_CHARS)
-            #     cleaned_lines.append(line)
-            #     st.push(line[1:])
             else:
                 cleaned_lines.append(line)
-
-    print(st)
 
     with open(filename[:-4]+".hack", 'w') as f:
         for line in cleaned_lines:
@@ -140,116 +152,46 @@ def parse_c_instruction(line):
     return "111" + a + c + d + j
 
 def parse_computation(comp):
-    # TODO: This function is the worst part of the entire assembler
-    # but there are multiple ways to get the same behaviour which is
-    # the same as checking this christmas tree of states. At the bottom
-    # is the start of my thoughts on using the individual operations
-    # to streamline the behaviour of this function.
-
-    # Check for not
-    if '!' == comp[0]:
-        assert len(comp) == 2
-        if comp[1] == 'D':
-            return '001101'
-        elif comp[1] in 'AM':
-            return '110001'
-        else:
-            raise ValueError(f'Computation not recognized: {comp}')
-
-    # Check for plain decimals (0,1,-1)
-    if comp.isdecimal():
-        if comp == '0':
-            return '101010'
-        elif comp == '1':
-            return '111111'
-        elif comp == '-1':
-            return '111010'
-        else:
-            raise ValueError(f'Computation not recognized: {comp}')
-
-    # Check for passthrough
-    if len(comp) == 1:
-        if comp[0] == 'D':
-            return '001100'
-        elif comp[0] in 'AM':
-            return '110000'
-        else:
-            raise ValueError(f'Computation not recognized: {comp}')
-
-    # Check for A|B
-    if '|' == comp[1]:
-        assert len(comp) == 3
-        return '010101'
-
-    # Check for A&B
-    if '&' == comp[1]:
-        assert len(comp) == 3
+    """While this function is at least clear in the operations,
+    it still feels pretty dirty. If I really wanted better
+    understanding of each computation code, I could create
+    classes for each function and eval them to use pythons
+    processing to build the computation but this shall suffice.
+    """
+    if comp == '0':
+        return '101010'
+    if comp == '1':
+        return '111111'
+    if comp == '-1':
+        return '111010'
+    if comp == 'D':
+        return '001100'
+    if comp == 'A' or comp =='M':
+        return '110000'
+    if comp == '!D':
+        return '001101'
+    if re.match(r'![MA]', comp):
+        return '110001'
+    if comp == '-D':
+        return '001111'
+    if re.match(r'-[MA]', comp):
+        return '110011'
+    if comp == 'D+1' or comp == '1+D':
+        return '011111'
+    if re.match(r'[MA]\+1', comp) or re.match(r'1\+[MA]', comp):
+        return '110111'
+    if comp == 'D-1':
+        return '001110'
+    if re.match(r'[MA]-1', comp):
+        return '110010'
+    if re.match(r'D\+[MA]', comp) or re.match(r'[MA]\+D', comp):
+        return '000010'
+    if re.match(r'D-[MA]', comp):
+        return '010011'
+    if re.match(r'[MA]-D', comp):
+        return '000111'
+    if re.match(r'D&[MA]', comp) or re.match(r'[MA]&D', comp):
         return '000000'
-
-    assert '+' in comp or '-' in comp
-
-    # Check for sums
-    if '-' in comp:
-        if len(comp) == 2:
-            if comp[1] == 'D':
-                return '001111'
-            elif comp[1] in 'AM':
-                return '110011'
-        elif len(comp) == 3:
-            if comp[1]=='-':
-                if comp[0]=='D':
-                    if comp[2]=='1':
-                        return '001110'
-                    elif comp[2] in 'AM':
-                        return '010011'
-                    else:
-                        raise ValueError(f'Computation not recognized: {comp}')
-                elif comp[0]=='A':
-                    if comp[2]=='1':
-                        return '110010'
-                elif comp[2]=='D':
-                    if comp[0] in 'AM':
-                        return '000111'
-                    else:
-                        raise ValueError(f'Computation not recognized: {comp}')
-
-    if comp[1]=='+':
-        if '1' in comp:
-            if 'D' in comp:
-                return '011111'
-            elif 'A' in comp or 'M' in comp:
-                return '110111'
-        else:
-            return '000010'
-
+    if re.match(r'D\|[MA]', comp) or re.match(r'[MA]\|D', comp):
+        return '010101'
     raise ValueError(f'Computation not recognized: {comp}')
-
-
-    # AM = comp.find('A') + comp.find('M') + 1
-    # D = comp.find('D')
-
-    # c3 = AM < 0
-    # c1 = D  < 0
-
-    # c5 = not ('&' in comp or '|' in comp)
-
-
-dests = {
-    'M': 1,
-    'D': 2,
-    'A': 4
-}
-
-jumps = {
-    'jgt': 1,
-    'jeq': 2,
-    'jge': 3,
-    'jlt': 4,
-    'jne': 5,
-    'jle': 6,
-    'jmp': 7,
-}
-
-VALID_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_')
-
-assembler('max/Max.asm')
