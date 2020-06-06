@@ -101,7 +101,7 @@ def remove_comments(generator):
             if len(line)>0:
                 yield line
 
-def assembler(filename):
+def assembler(filename, output=None):
     assert filename[-4:] == '.asm', "File type should be '.asm'"
 
     st = SymbolTable()
@@ -117,7 +117,8 @@ def assembler(filename):
             else:
                 cleaned_lines.append(line)
 
-    with open(filename[:-4]+".hack", 'w') as f:
+    out = filename[:-4]+".hack" if output is None else output
+    with open(out, 'w') as f:
         for line in cleaned_lines:
             if line[0] == '@':
                 print(parse_a_instruction(line, st), file=f)
@@ -195,3 +196,19 @@ def parse_computation(comp):
     if re.match(r'D\|[MA]', comp) or re.match(r'[MA]\|D', comp):
         return '010101'
     raise ValueError(f'Computation not recognized: {comp}')
+
+if __name__=='__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Hack assembler.')
+    parser.add_argument('filename', type=str, nargs='+',
+                        help='Filenames to process.')
+    parser.add_argument('--outputs', '-o', type=str, nargs='+',
+                        help='Filenames of the outputs.')
+
+    args = parser.parse_args()
+    if args.outputs is None: args.outputs = [None]*len(args.filename)
+    assert len(args.filename) == len(args.outputs)
+
+    for fn, fo in zip(args.filename, args.outputs):
+        assembler(fn, fo)
