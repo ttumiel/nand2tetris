@@ -44,6 +44,20 @@ jumps = {
     'jmp': 7,
 }
 
+computations = {
+    '0':'101010',   '1':'111111',   '-1':'111010',
+    'D':'001100',   'A':'110000',   'M':'110000',
+    '!D':'001101',  '!A':'110001',  '!M':'110001',
+    '-D':'001111',  '-A':'110011',  '-M':'110011',
+    'D+1':'011111', '1+D':'011111', 'A+1':'110111',
+    '1+A':'110111', 'M+1':'110111', '1+M':'110111',
+    'D-1':'001110', 'A-1':'110010', 'M-1':'110010',
+    'D+A':'000010', 'A+D':'000010', 'D+M':'000010',
+    'M+D':'000010', 'D-M':'010011', 'D-A':'010011',
+    'A-D':'000111', 'M-D':'000111', 'D&A':'000000',
+    'D&M':'000000', 'D|A':'010101', 'D|M':'010101'
+}
+
 VALID_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$')
 
 class SymbolTable:
@@ -82,9 +96,9 @@ class SymbolTable:
 def to_bin(value, pad=15):
     return f"{{:0>{pad}}}".format(bin(value)[2:])
 
-def remove_comments(generator):
+def remove_comments(handle):
     block_comment=False
-    for line in generator:
+    for line in handle:
         line = line[:-1].replace(' ', '')
         comment = line.find('/')
         if comment != -1:
@@ -108,7 +122,7 @@ def assembler(filename, output=None):
     cleaned_lines = []
     symbol_count = 0
     with open(filename, 'r') as f:
-        for i,line in enumerate(remove_comments(f.readlines())):
+        for i,line in enumerate(remove_comments(f)):
             if line[0] == '(' and line[-1] == ')':
                 symbol = line[1:-1]
                 assert set(symbol).issubset(VALID_CHARS)
@@ -153,49 +167,10 @@ def parse_c_instruction(line):
     return "111" + a + c + d + j
 
 def parse_computation(comp):
-    """While this function is at least clear in the operations,
-    it still feels pretty dirty. If I really wanted better
-    understanding of each computation code, I could create
-    classes for each function and eval them to use pythons
-    processing to build the computation but this shall suffice.
-    """
-    if comp == '0':
-        return '101010'
-    if comp == '1':
-        return '111111'
-    if comp == '-1':
-        return '111010'
-    if comp == 'D':
-        return '001100'
-    if comp == 'A' or comp =='M':
-        return '110000'
-    if comp == '!D':
-        return '001101'
-    if re.match(r'![MA]', comp):
-        return '110001'
-    if comp == '-D':
-        return '001111'
-    if re.match(r'-[MA]', comp):
-        return '110011'
-    if comp == 'D+1' or comp == '1+D':
-        return '011111'
-    if re.match(r'[MA]\+1', comp) or re.match(r'1\+[MA]', comp):
-        return '110111'
-    if comp == 'D-1':
-        return '001110'
-    if re.match(r'[MA]-1', comp):
-        return '110010'
-    if re.match(r'D\+[MA]', comp) or re.match(r'[MA]\+D', comp):
-        return '000010'
-    if re.match(r'D-[MA]', comp):
-        return '010011'
-    if re.match(r'[MA]-D', comp):
-        return '000111'
-    if re.match(r'D&[MA]', comp) or re.match(r'[MA]&D', comp):
-        return '000000'
-    if re.match(r'D\|[MA]', comp) or re.match(r'[MA]\|D', comp):
-        return '010101'
-    raise ValueError(f'Computation not recognized: {comp}')
+    try:
+        return computations[comp]
+    except KeyError:
+        raise ValueError(f'Computation not recognized: {comp}')
 
 if __name__=='__main__':
     import argparse
