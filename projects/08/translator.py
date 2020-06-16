@@ -4,56 +4,25 @@ Translates Jack virtual machine code into hack assembly code.
 Process:
 Loop through the virtual machine code, ignoring comments.
 Translate each line into the corresponding set of assembly instructions
+Handles memory segments, logical and arithmetic operations,
+branching and function calling.
 """
 
 from pathlib import Path
-
-
-# Loads 2 args off the stack into M and D
-# M = arg1, D = arg2
-load_2_args = """@SP
-M=M-1 // SP--
-A=M
-D=M // D=*SP
-@SP
-A=M-1 // SP--
-"""
-
-# Load one arg off the stack into D
-load_1_arg = """@SP
-A=M-1 // SP--
-"""
-
-# Apply an arithmetic operation to 2 args
-arth_2_args = "M=M{op}D // *SP+D"
-
-# Apply a logic operation to 2 args
-log_2_args = """D=M-D
-@LOG_{cmp}_true.{uuid}
-D;J{cmp}
-@SP
-A=M-1
-M=0
-@LOG_{cmp}_false.{uuid}
-0;JMP
-(LOG_{cmp}_true.{uuid})
-@SP
-A=M-1
-M=-1
-(LOG_{cmp}_false.{uuid})"""
-
-
-# apply an operation to 1 arg
-asm_1_arg = "M={op}M // *SP=D"
+from translator_asm import *
 
 def one_arg_asm(*args, **kwargs):
+    "Create an unary operation"
     asm = load_1_arg + asm_1_arg
     return asm.format(*args, **kwargs)
 
+
 def two_arg_asm(*args, logic=True, extra="", **kwargs):
+    "Create a binary operation"
     asm = load_2_args
     asm += log_2_args if logic else arth_2_args
     return asm.format(*args, extra=extra, **kwargs)
+
 
 arithmetic_operations = {
     # arithmetic
@@ -72,44 +41,6 @@ arithmetic_operations = {
     'not': lambda **k: one_arg_asm(op='!')
 }
 
-seg_push = """@{segment}
-D=M // D=base_addr
-@{addr}
-A=D+A // A=base_addr+offset
-D=M // D=val
-@SP
-A=M
-M=D
-@SP
-M=M+1"""
-
-seg_pop = """@{segment}
-D=M // D=base_addr
-@{addr} // offset
-D=D+A // D = base_addr+offset
-@R13
-M=D
-@SP
-AM=M-1 //SP--
-D=M // D=val
-@R13
-A=M
-M=D"""
-
-address_pop = """@SP
-AM=M-1
-D=M
-@{addr}
-M=D"""
-
-address_push = """@{addr}
-D={val}
-@SP
-A=M
-M=D
-@SP
-M=M+1"""
-
 addr_segments = {
     'pointer':  lambda o,**k: {'addr':3+int(o),    'val':'M'},
     'temp':     lambda o,**k: {'addr':5+int(o),    'val':'M'},
@@ -118,14 +49,18 @@ addr_segments = {
 }
 push_segments = {'local': 'LCL', 'argument': 'ARG', 'this': 'THIS', 'that': 'THAT'}
 
+
 def push(segment, offset, **kwargs):
+    "Push a value from a particular memory segment to the stack"
     if segment in push_segments:
         return seg_push.format(segment=push_segments[segment], addr=offset)
     elif segment in addr_segments:
         return address_push.format(**addr_segments[segment](offset, **kwargs))
     else: raise ValueError(segment, offset)
 
+
 def pop(segment, offset, **kwargs):
+    "Pop a value from the stack to a particular memory segment"
     assert segment != 'constant'
     if segment in push_segments:
         return seg_pop.format(segment=push_segments[segment], addr=offset)
@@ -133,45 +68,37 @@ def pop(segment, offset, **kwargs):
         return address_pop.format(**addr_segments[segment](offset, **kwargs))
     else: raise ValueError(segment, offset)
 
+
 def label(name, **kwargs):
+    "Add an assembly label"
     return "("+name+")"
 
+
 def goto(name, **kwargs):
+    "Unconditionally jump to `name`"
     return "@"+name+"\n0;JMP"
 
+
 def if_goto(name, **kwargs):
+    "Conditionally jump to `name` on the last value in the stack."
     return """@SP
 AM=M-1
 D=M
 @"""+name+"\nD;JNE"
 
 
-# Init SP to 256 and call Sys.init
 def init():
+    "Init SP to 256 and call Sys.init"
     return """@256
 D=A
 @SP
 M=D // SP = 256
 """ + call('Sys.init', '0', '0')
 
-# Args=SP-5-nargs (i.e. function arguments on stack)
-# LCL = SP
-call_asm = """@{offset}
-D=A
-@SP
-D=M-D // D=SP-5-nargs
-@ARG
-M=D // ARG = SP-5-nargs
-@SP
-D=M
-@LCL
-M=D
-@{name}
-0;JMP
-({name}$ret.{i})
-"""
 
 def call(func_name, nargs, i, **kwargs):
+    """Call an assembly function with n arguments
+    Stores callers state and sets functions stack"""
     out = "\n".join([push('constant', '{name}$ret.{i}'),
                     address_push.format(addr='LCL',val='M'),
                     address_push.format(addr='ARG',val='M'),
@@ -181,76 +108,25 @@ def call(func_name, nargs, i, **kwargs):
     return out.format(name=func_name, i=i, offset=int(nargs)+5)
 
 
-func_asm = "({funcname})\n"
-
 def function(func_name, nlocals, **kwargs):
+    "Create an assembly function. Initialises `nlocals` local vars to 0"
     out = func_asm.format(funcname=func_name)
+    if int(nlocals)>0: out += '\n'
     out += "\n".join(push('constant', '0') for _ in range(int(nlocals)))
     return out
 
 
-return_asm = """@LCL
-D=M
-@R14
-M=D
-@5
-A=D-A
-D=M
-@R15
-M=D
-""" + pop('argument', 0) + """// RETURN
-@ARG
-D=M+1
-@SP
-M=D //SP=arg+1
-
-@R14
-D=M-1 // LCL-1
-@R14
-AM=D
-D=M
-@THAT
-M=D // THAT = *(LCL-1)
-
-@R14
-D=M-1 // LCL-2
-@R14
-AM=D
-D=M
-@THIS
-M=D // THIS = *(LCL-2)
-
-@R14
-D=M-1 // LCL-3
-@R14
-AM=D
-D=M
-@ARG
-M=D // ARG = *(LCL-3)
-
-@R14
-D=M-1 // LCL-4
-@R14
-AM=D
-D=M
-@LCL
-M=D // LCL = *(LCL-4)
-
-@R15
-A=M
-0;JMP // goto lcl-5 == retAddr
-// END RETURN
-"""
-
-
 def return_func(**kwargs):
-    return return_asm
+    """Return from a function call by restoring the state
+    and popping the returned value."""
+    return return_asm_pre + pop('argument', 0) + return_asm_post
+
 
 def get_lines(filename):
+    "Generate stripped code lines from a text file."
     with open(filename, 'r') as f:
         block_comment=False
         for line in f:
-
             line = line[:-1]
             comment = line.find('/')
             if comment != -1:
@@ -267,12 +143,13 @@ def get_lines(filename):
                 if len(line)>0:
                     yield line.strip()
 
-# Common api: args, filename, line i
+# Common arguments for commands: args (from vm), filename, line id
 memory_commands = {'push': push, 'pop': pop}
 branch_commands = {'goto': goto, 'if-goto': if_goto, 'label': label}
 func_commands = {'function': function, 'return': return_func, 'call': call}
 
 def get_command(cmd):
+    "Get the command for a particular VM function."
     if cmd in arithmetic_operations:
         return arithmetic_operations[cmd]
     if cmd in memory_commands:
@@ -284,6 +161,7 @@ def get_command(cmd):
     raise ValueError('Command not recognized:', cmd)
 
 def translate_file(filename, fileout, annotate=False):
+    "Translate a single file into fileout. Annotate adds block comments."
     fn = Path(filename).stem
     for i,line in enumerate(get_lines(filename)):
         words = [w for w in line.split(' ') if len(w)>0]
@@ -292,6 +170,15 @@ def translate_file(filename, fileout, annotate=False):
         print(cmd(*words[1:], i=i, filename=fn), file=fileout)
 
 def translator(filenames, fileout, annotate=False):
+    """Translate a set of files into a single output file `fileout`.
+    Initialises the stack pointer to 256 and calls the sys function
+    init before translating other code.
+
+    Parameters:
+        filenames (list): a list of .vm filenames the translate.
+        fileout (str): the file handle to write to.
+        annotate (bool): add block comments to the generated asm.
+    """
     if annotate: print("// Generated hack asm file.\n\n// Init sys call.", file=fileout)
     print(init(), file=fileout)
     for f in filenames:
