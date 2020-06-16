@@ -111,10 +111,10 @@ M=D
 M=M+1"""
 
 addr_segments = {
-    'pointer':  lambda i: {'addr':3+int(i),    'val':'M'},
-    'temp':     lambda i: {'addr':5+int(i),    'val':'M'},
-    'constant': lambda i: {'addr':i,           'val':'A'},
-    'static':   lambda i: {'addr':'Static.'+i, 'val':'M'}
+    'pointer':  lambda o,**k: {'addr':3+int(o),    'val':'M'},
+    'temp':     lambda o,**k: {'addr':5+int(o),    'val':'M'},
+    'constant': lambda o,**k: {'addr':o,           'val':'A'},
+    'static':   lambda o,filename,**k: {'addr':filename+'.Static.'+o, 'val':'M'}
 }
 push_segments = {'local': 'LCL', 'argument': 'ARG', 'this': 'THIS', 'that': 'THAT'}
 
@@ -122,7 +122,7 @@ def push(segment, offset, **kwargs):
     if segment in push_segments:
         return seg_push.format(segment=push_segments[segment], addr=offset)
     elif segment in addr_segments:
-        return address_push.format(**addr_segments[segment](offset))
+        return address_push.format(**addr_segments[segment](offset, **kwargs))
     else: raise ValueError(segment, offset)
 
 def pop(segment, offset, **kwargs):
@@ -130,7 +130,7 @@ def pop(segment, offset, **kwargs):
     if segment in push_segments:
         return seg_pop.format(segment=push_segments[segment], addr=offset)
     elif segment in addr_segments:
-        return address_pop.format(**addr_segments[segment](offset))
+        return address_pop.format(**addr_segments[segment](offset, **kwargs))
     else: raise ValueError(segment, offset)
 
 def label(name, **kwargs):
@@ -146,6 +146,7 @@ D=M
 @"""+name+"\nD;JNE"
 
 
+# Init SP to 256 and call Sys.init
 def init():
     return """@256
 D=A
@@ -153,6 +154,8 @@ D=A
 M=D // SP = 256
 """ + call('Sys.init', '0', '0')
 
+# Args=SP-5-nargs (i.e. function arguments on stack)
+# LCL = SP
 call_asm = """@{offset}
 D=A
 @SP
@@ -169,27 +172,39 @@ M=D
 """
 
 def call(func_name, nargs, i, **kwargs):
-    out = "\n".join([push('constant', '{name}$ret.{i}'), push('constant', 'LCL'),
-           push('constant', 'ARG'), push('constant', 'THIS'), push('constant', 'THAT')])
+    out = "\n".join([push('constant', '{name}$ret.{i}'),
+                    address_push.format(addr='LCL',val='M'),
+                    address_push.format(addr='ARG',val='M'),
+                    address_push.format(addr='THIS',val='M'),
+                    address_push.format(addr='THAT',val='M')])
     out += "\n" + call_asm
     return out.format(name=func_name, i=i, offset=int(nargs)+5)
 
 
-func_asm = "({filename}.{funcname})\n"
+func_asm = "({funcname})\n"
 
-def function(func_name, nlocals, filename, **kwargs):
-    out = func_asm.format(funcname=func_name, filename=filename)
-    out += "\n".join(push('local', '0') for _ in range(int(nlocals)))
+def function(func_name, nlocals, **kwargs):
+    out = func_asm.format(funcname=func_name)
+    out += "\n".join(push('constant', '0') for _ in range(int(nlocals)))
     return out
 
 
-return_asm = pop('argument', 0) + """// RETURN
+return_asm = """@LCL
+D=M
+@R14
+M=D
+@5
+A=D-A
+D=M
+@R15
+M=D
+""" + pop('argument', 0) + """// RETURN
 @ARG
 D=M+1
 @SP
-M=D
+M=D //SP=arg+1
 
-@LCL
+@R14
 D=M-1 // LCL-1
 @R14
 AM=D
@@ -221,8 +236,8 @@ D=M
 @LCL
 M=D // LCL = *(LCL-4)
 
-@R14
-A=M-1 // LCL-5
+@R15
+A=M
 0;JMP // goto lcl-5 == retAddr
 // END RETURN
 """
@@ -278,7 +293,7 @@ def translate_file(filename, fileout, annotate=False):
 
 def translator(filenames, fileout, annotate=False):
     if annotate: print("// Generated hack asm file.\n\n// Init sys call.", file=fileout)
-    # print(init(), file=fileout)
+    print(init(), file=fileout)
     for f in filenames:
         print(f'Translating {f}')
         translate_file(f, fileout, annotate)
