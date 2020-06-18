@@ -1,0 +1,29 @@
+class GameRunner {
+    field Grid grid;
+
+    constructor GameRunner new(){
+        let grid = Grid.new(511, 255, 8);
+        return this;
+    }
+
+    method void run(){
+        var boolean exit;
+        var char key;
+        let exit = false;
+
+        while (~exit){
+            let key = Keyboard.keyPressed();
+            if (key = 81)  { let exit = true; }     // q key
+            do grid.update();
+            do Sys.wait(100);  // delays the next movement
+        }
+
+        return;
+    }
+
+    method void dispose() {
+        do grid.dispose();
+        do Memory.deAlloc(this);
+        return;
+   }
+}

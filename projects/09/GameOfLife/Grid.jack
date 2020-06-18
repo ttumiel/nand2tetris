@@ -1,0 +1,108 @@
+
+class Grid {
+    field int w,h,s;
+    field Array blocks;
+    field Array nextBlocks;
+
+    constructor Grid new(int width, int height, int blocksize){
+        var int n,t;
+        var boolean qq;
+        let w = width/blocksize;
+        let h = height/blocksize;
+        let s = blocksize;
+        let t = w*h;
+        let blocks = Array.new(t);
+        let nextBlocks = Array.new(t);
+
+        // init blocks
+        do initArray(blocks);
+        do initArray(nextBlocks);
+
+        let blocks[2*w] = true;
+        let blocks[(2*w)+2] = true;
+        let blocks[(3*w)+1] = true;
+        let blocks[(3*w)+2] = true;
+        let blocks[w+2] = true;
+
+        return this;
+    }
+
+    method void initArray(Array arr){
+        var int n;
+        let n = 0;
+        while (n<w*h){
+            let arr[n] = false;
+            let n = n + 1;
+        }
+        return;
+    }
+
+    method void switch(){
+        var int n;
+        let n = 0;
+        while (n<w*h){
+            let blocks[n] = ~blocks[n];
+            let n = n + 1;
+        }
+        return;
+    }
+
+    method boolean checkCell(int x, int y){
+        var boolean current;
+        var int pos,count;
+        let pos = y*w+x;
+
+        let current = blocks[pos];
+        let count = 0;
+        if (x>0){ // left
+            if (blocks[pos-1]){ let count = count + 1; }
+            if (y>0){if (blocks[pos-w-1]){ let count = count + 1; }} // up left
+            if (y<h-1){if (blocks[pos+w-1]){ let count = count + 1; }} // down left
+        }
+        if (x<w-1){ // right
+            if (blocks[pos+1]){ let count = count + 1; }
+            if (y>0){if (blocks[pos-w+1]){ let count = count + 1; }} // up right
+            if (y<h-1){if (blocks[pos+w+1]){ let count = count + 1; }} // down right
+        }
+        if (y>0){if (blocks[pos-w]){ let count = count + 1; }} // up
+        if (y<h-1){if (blocks[pos+w]){ let count = count + 1; }} // down
+
+        return ((count=3) | ((count=2) & current));
+    }
+
+    method void update(){
+        var int i, j;
+        let i = 0;
+        let j = 0;
+
+        while (i<h){            // for y in range(256/size)
+            while (j<w){        // for x in range(512/size)
+                do drawCell(j, i, blocks[(w*i)+j]);
+                let nextBlocks[(w*i)+j] = checkCell(j, i);
+                let j = j + 1;
+            }
+            let j = 0;
+            let i = i + 1;
+        }
+
+        do blocks.dispose();
+        let blocks = nextBlocks;
+        let nextBlocks = Array.new(w*h);
+        return;
+    }
+
+    method void drawCell(int x, int y, boolean colour){
+        var int Ax, Ay;
+        let Ax = x*s;
+        let Ay = y*s;
+        do Screen.setColor(colour);
+        do Screen.drawRectangle(Ax, Ay, Ax + s, Ay + s);
+        return;
+    }
+
+    method void dispose() {
+        do blocks.dispose();
+        do Memory.deAlloc(this);
+        return;
+   }
+}
