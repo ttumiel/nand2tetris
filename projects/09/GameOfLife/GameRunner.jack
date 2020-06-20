@@ -1,3 +1,4 @@
+/** Run the GameOfLife game, exiting when 'q' is pressed. */
 class GameRunner {
     field Grid grid;
 

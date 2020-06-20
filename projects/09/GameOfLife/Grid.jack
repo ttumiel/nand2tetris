@@ -1,3 +1,18 @@
+/** The Grid class that builds the individual cells of GameOfLife
+ *
+ * Args:
+ *   width (int): width of the game board.
+ *   height (int): height of the game board.
+ *   blocksize (int): size of the individual cells.
+ *
+ *
+ * Process:
+ * - loops through width and height in increments of blocksize.
+ * - at each step checks for each block:
+ *    - if alive: stay alive if surrounds==2 or 3 else die
+ *    - if dead: animate if surrounds==3
+ * - blocks are calculated from an array of booleans indicating status
+ */
 
 class Grid {
     field int w,h,s;
@@ -18,6 +33,7 @@ class Grid {
         do initArray(blocks);
         do initArray(nextBlocks);
 
+        // Starting value for a glider
         let blocks[2*w] = true;
         let blocks[(2*w)+2] = true;
         let blocks[(3*w)+1] = true;
@@ -32,16 +48,6 @@ class Grid {
         let n = 0;
         while (n<w*h){
             let arr[n] = false;
-            let n = n + 1;
-        }
-        return;
-    }
-
-    method void switch(){
-        var int n;
-        let n = 0;
-        while (n<w*h){
-            let blocks[n] = ~blocks[n];
             let n = n + 1;
         }
         return;
