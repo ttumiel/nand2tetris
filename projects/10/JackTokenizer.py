@@ -1,14 +1,14 @@
 "Tokenize jack files into tokens and token types."
 
-from enum import IntEnum
+from enum import Enum
 import re
 
-class TokenType(IntEnum):
-    KEYWORD = 1
-    SYMBOL = 2
-    INTCNST = 3
-    STRCNST = 4
-    IDENTIFIER = 5
+class TokenType(Enum):
+    KEYWORD = 'keyword'
+    SYMBOL = 'symbol'
+    INTCNST = 'intConstant'
+    STRCNST = 'strConstant'
+    IDENTIFIER = 'identifier'
 
 class JackTokenizer:
     def __init__(self, filename):
