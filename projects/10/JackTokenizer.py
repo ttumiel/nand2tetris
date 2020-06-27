@@ -6,8 +6,8 @@ import re
 class TokenType(Enum):
     KEYWORD = 'keyword'
     SYMBOL = 'symbol'
-    INTCNST = 'intConstant'
-    STRCNST = 'strConstant'
+    INTCNST = 'integerConstant'
+    STRCNST = 'stringConstant'
     IDENTIFIER = 'identifier'
 
 class JackTokenizer:
@@ -19,13 +19,15 @@ class JackTokenizer:
                         'void', 'true', 'false', 'null', 'this', 'let', 'do',
                         'if', 'else', 'while', 'return'}
         self.identifiers = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_')
-        self.splits = re.compile('([ {}()[\].,;+\-*/&|<>=~])(?![\w ]+")')
+        self.splits = re.compile('"[^"]*"|\w+|[{}()[\].,;+\-*\/&|<>=~]')
+        self.comments = re.compile('//|/\*')
 
     def __iter__(self):
         for line in self.get_lines():
-            for token in self.splits.split(line):
-                if len(token)>0 and token != ' ':
-                    yield token, self.get_token_type(token)
+            for token in self.splits.findall(line):
+                token_type = self.get_token_type(token)
+                if token_type == TokenType.STRCNST: token = token[1:-1]
+                yield token, token_type
 
     def get_token_type(self, token):
         if token in self.symbols:
@@ -46,17 +48,21 @@ class JackTokenizer:
             block_comment=False
             for line in f:
                 line = line[:-1]
-                comment = line.find('/')
-                if comment != -1:
-                    if block_comment and comment!=0:
-                        if line[comment-1] == '*':
-                            block_comment = False
-                    elif line[comment+1] in '/*':
-                        block_comment = (line[comment+1] == '*'
-                            and not line[comment+2:].find('*/')>=0)
-                        line = line[:comment]
+                if block_comment:
+                    if re.search('\*/', line) is not None:
+                        block_comment = False
+                    continue
+                comment = self.comments.search(line)
+                if comment is not None:
+                    start = comment.start()
+                    if comment.group() == '/*':
+                        if re.search("\*/", line[start+2:]) is None:
+                            block_comment = True
+                        continue
+                    else:
+                        line = line[:start].strip()
                         if len(line)>0:
-                            yield line.strip()
+                            yield line
                 elif not block_comment:
                     if len(line)>0:
                         yield line.strip()
