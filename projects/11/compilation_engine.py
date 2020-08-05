@@ -1,9 +1,13 @@
 "Compile the tokenized jack file into syntactical components."
 
-from JackTokenizer import JackTokenizer, TokenType
+from jack_tokenizer import JackTokenizer, TokenType
+from symbol_table import SymbolTable
+from vm_writer import VMWriter
 
 END_STMT = {'let', 'do', 'while', 'if', 'return', '}'}
-XML_ESCAPE = {'>': '&gt;', '<': '&lt;', '"': '&quot;', '&': '&amp;'}
+SYMBOLS = {'+': 'add', '-': 'sub', '&': 'and', '|': 'or', '<': 'lt', '>':'gt', '=':'eq'}
+SYMBOLS_UNARY = {'-': 'neg', '~': 'not'}
+KEYWORDS_VALUES = {'null': '0', 'false': '0', 'true': '1'}
 
 class CompilationEngine:
     def __init__(self, filename, fileout):
@@ -11,7 +15,10 @@ class CompilationEngine:
         self.outname = fileout
         self.tokenizer = JackTokenizer(self.file)
         self.iter_tokens = iter(self.tokenizer)
-        self.stack = []
+        self.symbol_table = SymbolTable()
+        self.writer = VMWriter(fileout)
+        self._before = None
+
         self.identifiers = {'(': self._method_call, '[': self._array_lookup, '.': self._method_call}
         self.methods = {
             'class': self.compile_class, 'static': self.compile_class_var_dec, 'else': self._compile_else,
@@ -22,32 +29,25 @@ class CompilationEngine:
         }
 
     def compile(self):
-        self.fileout = open(self.outname, 'w')
-        try:
-            self._compile()
-        finally:
-            self.fileout.close()
+        with open(self.outname, 'w') as self.fileout:
+            self.compile_class()
+            print(self.symbol_table)
 
     def _compile(self, until=None, before=None):
-        for token,token_type in self.iter_tokens:
-            if before is not None:
-                if isinstance(before, str) and token==before:
-                    return token,token_type
-                if isinstance(before, set) and token in before:
-                    return token,token_type
+        for token,token_type in self(until, before):
+            print(token)
             if token_type == TokenType.KEYWORD and token in self.methods:
                 self.methods[token](token,token_type)
-            else:
-                self.tag_token(token, token_type)
-            if until is not None:
-                if token == until:
-                    return
+            # else:
+            #     self.syntax_error('Unknown token found "%s"' % token)
 
-    def compile_class(self, token, token_type):
-        self.open_tag(token)
-        self.tag_token(token, token_type)
+    def compile_class(self):
+        token = self.advance()[0]
+        if token != 'class': self.syntax_error('File should begin with `class` but found', token)
+        self.classname, tt = self.advance()
+        self.check_identifier(self.classname, tt)
+        self._advance_should_be('{')
         self._compile()
-        self.close_tag()
 
     def compile_class_var_dec(self, token, token_type):
         self.open_tag('classVarDec')
