@@ -28,6 +28,31 @@ class CompilationEngine:
             'while': self.compile_while, 'do': self.compile_do, 'return': self.compile_return,
         }
 
+    def advance(self):
+        if self._before is not None:
+            bfr,self._before = self._before,None
+            return bfr
+        return next(self.iter_tokens)
+
+    def __call__(self, until=None, before=None):
+        while True:
+            if self._before is not None:
+                if before is not None and self._before[0] in before:
+                    return
+                bfr,self._before = self._before,None
+                yield bfr
+                if until is not None and bfr[0] in until:
+                    return
+            else:
+                try: token, token_type = next(self.iter_tokens)
+                except StopIteration: return
+                if before is not None and token in before:
+                    self._before = (token, token_type)
+                    return
+                yield token, token_type
+                if until is not None and token in until:
+                    return
+
     def compile(self):
         with open(self.outname, 'w') as self.fileout:
             self.compile_class()
