@@ -78,25 +78,27 @@ class CompilationEngine:
         self._define_var(var_type, var_kind)
 
     def compile_subroutine_dec(self, subroutine_type, token_type):
-        self.local_st = SymbolTable(self.symbol_table)
+        self.local_st = self.symbol_table.new_scope()
         if subroutine_type == 'method':
             self.local_st.define('this', self.classname, 'argument')
 
         return_type, _ = self.advance() #TODO
         subroutine_name, tt = self.advance()
         self.check_identifier(subroutine_name, tt)
-        self.writer.write_label(self.classname + '.' + subroutine_name)
+        self.writer.write('function' + self.classname + '.' + subroutine_name)
         if subroutine_type == 'constructor':
             # push number of words to reserve
-            # self.writer.write_push('constant', ...)
-            self.writer.write_call('Memory.alloc', 1) #TODO
+            self.writer.write_push('constant', len(self.symbol_table)) # is this right? Should the number of words to reserve==the number of statics and fields?
+            self.writer.write_call('Memory.alloc', 1)
 
         self._advance_should_be('(')
         self.compile_param_list()
         self.compile_subroutine_body()
         print(self.local_st)
         if return_type == 'void':
-            self.writer.write_pop('temp', 0)
+            self.writer.write_push('constant', 0)
+            self.writer.write_return()
+            # self.writer.write_pop('temp', 0)
 
     def _define_var(self, var_type, var_kind, local=False):
         st = self.local_st if local else self.symbol_table
@@ -123,20 +125,19 @@ class CompilationEngine:
 
     def compile_let(self, token, token_type):
         identifier = self.advance()
-        id_func = self._get_identifier()
-        self._advance_should_be('=')
+        id_func = self._get_identifier() # This doesnt handle assignment to arrays yet - it would need to save the lookahead until the '=' and then call the id_func
+        self._advance_should_be('=') # similarly to the above statement, this would only be '=' if the expression was skipped
         self.compile_expression(end=';')
         id_func(*identifier, define=True)
 
     def _advance_should_be(self, cmp):
         t,tt = self.advance()
         if not t == cmp:
-            self.syntax_error(f'token {t} should be {cmp}')
+            self.syntax_error(f'token "{t}" should be "{cmp}"')
 
     def compile_if(self, token, token_type):
         self._advance_should_be('(')
-        # self.compile_expression()
-        self._compile(until=')') # TEMP
+        self.compile_expression()
         self._advance_should_be('{')
         self.writer.write_arithmetic('not') # go to else
         self.writer.write_if(self.classname+'.funcname.false')
@@ -145,7 +146,7 @@ class CompilationEngine:
         self.writer.write_label(self.classname+'.funcname.false')
 
         self._compile(before=END_STMT.union({'else'}))
-        if self._before == 'else':
+        if self._before[0] == 'else':
             self.advance()
             self._compile_else()
 
@@ -157,8 +158,7 @@ class CompilationEngine:
 
     def compile_while(self, token, token_type):
         self.writer.write_label(self.classname+'.while-start') # Make unique
-        # self.compile_expression() #TODO
-        self._compile(until=')')
+        self.compile_expression()
         self._advance_should_be('{')
         self.writer.write_arithmetic('not')
         self.writer.write_if(self.classname+'.while-end')
@@ -169,21 +169,20 @@ class CompilationEngine:
     def compile_do(self, token, token_type):
         self._method_call(end=')')
         self._advance_should_be(';')
+        self.writer.write_pop('temp', 0)
 
     def _method_call(self, token=None, token_type=None, end=')'):
         methodname = ''
-        for var,var_type in self(before='('):
+        if token is not None: methodname += token
+        for var,var_type in self(before='('): # Fix method naming: Foo.bar, bar, ??
             if var != '.': self.check_identifier(var, var_type)
             methodname += var
-        self._advance_should_be('(')
-        # nlocals = self.compile_expression_list(end)
-        nlocals = 1 # TEMP
-        self._compile(until=')') # TEMP
+        nlocals = self.compile_expression_list(end)
+        self._advance_should_be(')')
         self.writer.write_call(methodname, nlocals)
 
     def compile_return(self, token, token_type):
-        # out = self.compile_expression(end=';')
-        self._compile(until=';') #TEMP
+        out = self.compile_expression(end=';')
         self.writer.write_return()
 
     def compile_expression(self, end=')', close_end=True):
@@ -191,11 +190,30 @@ class CompilationEngine:
             self.compile_term(token, token_type, n=i)
         if close_end: self.advance()
 
-    def _array_lookup(self, token, token_type):
+    def _array_lookup(self, token, token_type, define=False):
+        self._advance_should_be('[')
+        # _,segment,index = self.local_st[token]
+        # self.writer.write_push(segment, index)
+        self._identifier_gen(token, token_type)
         self.compile_expression(end=']')
+        self.writer.write_arithmetic('add') #base + expression
+        if define:
+            self.writer.write_pop('temp', 0)    # Save expr2 to temp 0
+            self.writer.write_pop('pointer', 1) # save THAT = base+offset
+            self.writer.write_push('temp', 0)   # load the saved expr2
+            self.writer.write_pop('that', 0)    # set a[base+offset] = expr2
+        else:
+            # self.writer.write_pop('temp', 0)    # Save expr2 to temp 0
+            self.writer.write_pop('pointer', 1)
+            self.writer.write_push('that', 0)
+
 
     def _identifier_gen(self, token, token_type, define=False):
         _,segment,index = self.local_st[token]
+        if segment == 'field':
+            self.writer.write_push('argument', 0)
+            self.writer.write_pop('pointer', 0)
+            segment = 'this'
         f = self.writer.write_pop if define else self.writer.write_push
         f(segment, index)
 
@@ -227,6 +245,8 @@ class CompilationEngine:
             if first_token in {'false', 'true', 'null'}:
                 self.writer.write_push('constant', KEYWORDS_VALUES[first_token])
                 if first_token == 'true': self.writer.write_arithmetic('neg')
+            elif first_token == 'this':
+                self.writer.write_push('this', 0)
         else:
                 self.syntax_error('Expected expression but found "%s"' % first_token)
 
@@ -241,8 +261,10 @@ class CompilationEngine:
             self.writer.write_call('String.appendChar', 1)
 
     def compile_expression_list(self, end=')'):
-        for comma in self(before=')'):
+        i = -1
+        for i,comma in enumerate(self(before=')')):
             self.compile_expression(end=',)', close_end=False)
+        return i + 1
 
     def syntax_error(self, error):
         raise JackSyntaxError(error)
