@@ -60,7 +60,6 @@ class CompilationEngine:
 
     def _compile(self, until=None, before=None):
         for token,token_type in self(until, before):
-            print(token)
             if token_type == TokenType.KEYWORD and token in self.methods:
                 self.methods[token](token,token_type)
             # else:
@@ -74,188 +73,183 @@ class CompilationEngine:
         self._advance_should_be('{')
         self._compile()
 
-    def compile_class_var_dec(self, token, token_type):
-        self.open_tag('classVarDec')
-        self.tag_token(token, token_type)
-        self._compile(until=';')
-        self.close_tag()
+    def compile_class_var_dec(self, var_kind, token_type):
+        var_type = self.advance()[0]
+        self._define_var(var_type, var_kind)
 
-    def compile_subroutine_dec(self, token, token_type):
-        self.open_tag('subroutineDec')
-        self.tag_token(token, token_type)
-        self._compile(until='(')
+    def compile_subroutine_dec(self, subroutine_type, token_type):
+        self.local_st = SymbolTable(self.symbol_table)
+        if subroutine_type == 'method':
+            self.local_st.define('this', self.classname, 'argument')
+
+        return_type, _ = self.advance() #TODO
+        subroutine_name, tt = self.advance()
+        self.check_identifier(subroutine_name, tt)
+        self.writer.write_label(self.classname + '.' + subroutine_name)
+        if subroutine_type == 'constructor':
+            # push number of words to reserve
+            # self.writer.write_push('constant', ...)
+            self.writer.write_call('Memory.alloc', 1) #TODO
+
+        self._advance_should_be('(')
         self.compile_param_list()
         self.compile_subroutine_body()
-        self.close_tag()
+        print(self.local_st)
+        if return_type == 'void':
+            self.writer.write_pop('temp', 0)
+
+    def _define_var(self, var_type, var_kind, local=False):
+        st = self.local_st if local else self.symbol_table
+        for var_name, vtype in self(until=';'):
+            if vtype == TokenType.IDENTIFIER:
+                st.define(var_name, var_type, var_kind)
 
     def compile_param_list(self):
-        self.open_tag('parameterList')
-        token,token_type = self._compile(before=')')
-        self.close_tag()
-        self.tag_token(token, token_type)
+        for var_type,type_token in self(before=')'):
+            if var_type != ',':
+                var_id, id_type = self.advance()
+                self.check_identifier(var_id, id_type)
+                self.local_st.define(var_id, var_type, 'argument')
 
     def compile_subroutine_body(self):
-        self.open_tag('subroutineBody')
-        token,token_type = self._compile(before=END_STMT)
-        self.compile_statements(token,token_type)
-        self.close_tag()
-
-    def compile_var_dec(self, token, token_type):
-        self.open_tag('varDec')
-        self.tag_token(token, token_type)
-        self._compile(until=';')
-        self.close_tag()
-
-    def compile_statements(self, token=None, token_type=None):
-        self.open_tag('statements')
-        if token != '}':
-            if token_type is not None: self.methods[token](token, token_type)
-            token,token_type = self._compile(before='}')
-        self.close_tag()
-        self.tag_token(token, token_type)
-
-    def compile_let(self, token, token_type):
-        self.open_tag('letStatement')
-        self.tag_token(token, token_type)
-        out = self._get_identifier(*next(self.iter_tokens))
-        if out is not None: self.tag_token(out[0], out[1])
-        else: self._compile(until='=')
-        self.compile_expression(end=';')
-        self.close_tag()
-
-    def compile_if(self, token, token_type):
-        self.open_tag('ifStatement')
-        self.tag_token(token, token_type)
-        self._compile(until='(')
-        self.compile_expression()
-        self._compile(until='{')
         self.compile_statements()
 
-        # Handle possible 'else' clause
-        token,token_type = self._compile(before=END_STMT)
-        self.close_tag()
-        if token == '}':
-            self.tag_token(token, token_type)
-        else:
-            self.methods[token](token,token_type)
+    def compile_var_dec(self, token, token_type):
+        var_type, tt = self.advance()
+        self._define_var(var_type, 'local', local=True)
 
-    def _compile_else(self, token, token_type):
-        self.tag_token(token, token_type)
-        self._compile(until='{')
+    def compile_statements(self, token=None, token_type=None):
+        self._compile(until='}')
+
+    def compile_let(self, token, token_type):
+        identifier = self.advance()
+        id_func = self._get_identifier()
+        self._advance_should_be('=')
+        self.compile_expression(end=';')
+        id_func(*identifier, define=True)
+
+    def _advance_should_be(self, cmp):
+        t,tt = self.advance()
+        if not t == cmp:
+            self.syntax_error(f'token {t} should be {cmp}')
+
+    def compile_if(self, token, token_type):
+        self._advance_should_be('(')
+        # self.compile_expression()
+        self._compile(until=')') # TEMP
+        self._advance_should_be('{')
+        self.writer.write_arithmetic('not') # go to else
+        self.writer.write_if(self.classname+'.funcname.false')
+        self.compile_statements()
+        self.writer.write_goto(self.classname+'.funcname.end')
+        self.writer.write_label(self.classname+'.funcname.false')
+
+        self._compile(before=END_STMT.union({'else'}))
+        if self._before == 'else':
+            self.advance()
+            self._compile_else()
+
+        self.writer.write_label(self.classname+'.funcname.end')
+
+    def _compile_else(self):
+        self._advance_should_be('{')
         self.compile_statements()
 
     def compile_while(self, token, token_type):
-        self.open_tag('whileStatement')
-        self.tag_token(token, token_type)
-        self._compile(until='(')
-        self.compile_expression()
-        self._compile(until='{')
+        self.writer.write_label(self.classname+'.while-start') # Make unique
+        # self.compile_expression() #TODO
+        self._compile(until=')')
+        self._advance_should_be('{')
+        self.writer.write_arithmetic('not')
+        self.writer.write_if(self.classname+'.while-end')
         self.compile_statements()
-        self.close_tag()
+        self.writer.write_goto(self.classname+'.while-start')
+        self.writer.write_label(self.classname+'.while-end')
 
     def compile_do(self, token, token_type):
-        self.open_tag('doStatement')
-        self._method_call(token,token_type, end=')')
-        self._compile(until=';')
-        self.close_tag()
+        self._method_call(end=')')
+        self._advance_should_be(';')
 
-    def _method_call(self, token, token_type, end=')'):
-        self.tag_token(token, token_type)
-        if token != '(': self._compile(until='(')
-        self.compile_expression_list(end)
+    def _method_call(self, token=None, token_type=None, end=')'):
+        methodname = ''
+        for var,var_type in self(before='('):
+            if var != '.': self.check_identifier(var, var_type)
+            methodname += var
+        self._advance_should_be('(')
+        # nlocals = self.compile_expression_list(end)
+        nlocals = 1 # TEMP
+        self._compile(until=')') # TEMP
+        self.writer.write_call(methodname, nlocals)
 
     def compile_return(self, token, token_type):
-        self.open_tag('returnStatement')
-        self.tag_token(token, token_type)
-        out = self.compile_expression(';', skip_empty=True)
-        if out is not None: self.tag_token(out[0], out[1])
-        self.close_tag()
+        # out = self.compile_expression(end=';')
+        self._compile(until=';') #TEMP
+        self.writer.write_return()
 
-    def compile_expression(self, end=')', skip_empty=False, close_token=True, inner_term=False):
-        item = 0
-        out = None
-        if skip_empty:
-            next_token,next_type = next(self.iter_tokens)
-            if next_token in end:
-                return next_token,next_type
-
-        self.open_tag('expression')
-        token,token_type = (next_token,next_type) if skip_empty else next(self.iter_tokens)
-        while True:
-            if token in end: break
-            out = self.compile_term(token, token_type, n=item)
-            token,token_type = next(self.iter_tokens) if out is None else out
-            item += 1
-
-        self.close_tag()
-        if close_token: self.tag_token(token, token_type)
-        else: return token, token_type
+    def compile_expression(self, end=')', close_end=True):
+        for i,(token, token_type) in enumerate(self(before=end)):
+            self.compile_term(token, token_type, n=i)
+        if close_end: self.advance()
 
     def _array_lookup(self, token, token_type):
-        self.tag_token(token, token_type)
         self.compile_expression(end=']')
 
-    def _get_identifier(self, token, token_type):
-        next_token, next_type = next(self.iter_tokens)
-        func = self.identifiers.get(next_token, lambda *t: t)
-        self.tag_token(token, token_type)
-        return func(next_token, next_type)
+    def _identifier_gen(self, token, token_type, define=False):
+        _,segment,index = self.local_st[token]
+        f = self.writer.write_pop if define else self.writer.write_push
+        f(segment, index)
+
+    def _get_identifier(self):
+        self._before = self.advance()
+        return self.identifiers.get(self._before[0], self._identifier_gen)
 
     def compile_term(self, first_token=None, first_type=None, end=')', n=0):
         if first_type == TokenType.SYMBOL:
-            # New expression
             if first_token == '(':
-                self.open_tag('term')
-                self.tag_token(first_token, first_type)
-                self.compile_expression(inner_term=True)
-                self.close_tag()
-                return
-            # Unary Term
-            elif n==0 and first_token in '~-':
-                self.open_tag('term')
-                self.tag_token(first_token, first_type)
-                out = self.compile_term(*next(self.iter_tokens))
-                self.close_tag()
-                return out
-            self.tag_token(first_token, first_type)
-            return
+                self.compile_expression()
+            elif first_token in SYMBOLS or first_token == '~':
+                self.compile_term(*self.advance())
+                self.writer.write_arithmetic(self._decode_symbol(first_token, first_type, unary=n==0))
+            elif first_token in '*/':
+                self.compile_term(*self.advance())
+                self.writer.write_call('Math.' + ('multiply' if first_token=='*' else 'divide'), 2)
+            else:
+                self.syntax_error('Unrecognized symbol "%s"' % first_token)
 
-        self.open_tag('term')
-        out = None
-        if first_type == TokenType.IDENTIFIER:
-            out = self._get_identifier(first_token, first_type)
+        elif first_type == TokenType.IDENTIFIER:
+            id_func = self._get_identifier()
+            id_func(first_token, first_type)
+        elif first_type == TokenType.STRCNST:
+            self._build_string_constant(first_token)
+        elif first_type == TokenType.INTCNST:
+            self.writer.write_push('constant', first_token)
         else:
-            self.tag_token(first_token, first_type)
-        self.close_tag()
-        return out
+            if first_token in {'false', 'true', 'null'}:
+                self.writer.write_push('constant', KEYWORDS_VALUES[first_token])
+                if first_token == 'true': self.writer.write_arithmetic('neg')
+        else:
+                self.syntax_error('Expected expression but found "%s"' % first_token)
 
-    def tag_token(self, token, token_type):
-        self.open_tag(token_type.value, True)
-        self.write_val(token)
-        self.close_tag(True)
+    def _decode_symbol(self, token, token_type, unary=False):
+        return SYMBOLS_UNARY[token] if unary else SYMBOLS[token]
+
+    def _build_string_constant(self, token):
+        self.writer.write_push('constant', len(token))
+        self.writer.write_call('String.new', 1)
+        for v in token:
+            self.writer.write_push('constant', ord(v))
+            self.writer.write_call('String.appendChar', 1)
 
     def compile_expression_list(self, end=')'):
-        self.open_tag('expressionList')
-        while True:
-            out = self.compile_expression(end=','+end, skip_empty=True, close_token=False)
-            if out[0] == ',': self.tag_token(out[0], out[1])
-            else: break
-        self.close_tag()
-        self.tag_token(out[0], out[1])
+        for comma in self(before=')'):
+            self.compile_expression(end=',)', close_end=False)
 
-    def xml(self, tag, close=False):
-        return ("</" if close else "<")+tag+">"
+    def syntax_error(self, error):
+        raise JackSyntaxError(error)
 
-    def open_tag(self, tag, term=False):
-        indent = 2*len(self.stack)
-        print(indent*' ' + self.xml(tag), file=self.fileout, end='' if term else '\n')
-        self.stack.append(self.xml(tag,True))
+    def check_identifier(self, token, token_type):
+        if token_type != TokenType.IDENTIFIER:
+            self.syntax_error('"%s" is not a valid identifier.' % token)
 
-    def write_val(self, val):
-        indent = 2*len(self.stack)
-        val = XML_ESCAPE.get(val, val)
-        print(' '+val+' ', file=self.fileout, end='')
-
-    def close_tag(self, term=False):
-        indent = 2*len(self.stack)-2 if not term else 0
-        print(indent*' ' + self.stack.pop(), file=self.fileout)
+class JackSyntaxError(Exception):
+    pass
