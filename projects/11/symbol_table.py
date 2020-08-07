@@ -26,6 +26,10 @@ class SymbolTable:
         elif self.global_table is not None:
             return self.global_table[name]
 
+    def __contains__(self, name):
+        g = name in self.global_table if self.global_table is not None else False
+        return name in self.table or g
+
     def type_of(self, name):
         return self[name][0]
 

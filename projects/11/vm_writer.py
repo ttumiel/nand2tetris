@@ -14,7 +14,7 @@ class VMWriter:
         self.write(f'{command}')
 
     def write_label(self, label):
-        self.write(f'({label})')
+        self.write(f'label {label}')
 
     def write_goto(self, label):
         self.write(f'goto {label}')
@@ -30,6 +30,9 @@ class VMWriter:
 
     def write_return(self):
         self.write('return')
+
+    def write_function(self, name, nlocals):
+        self.write(f'function {name} {nlocals}')
 
     def write(self, cmd):
         self.file.write(cmd+'\n')
