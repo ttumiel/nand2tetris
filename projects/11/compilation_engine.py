@@ -1,5 +1,7 @@
 "Compile the tokenized jack file into syntactical components."
 
+from contextlib import contextmanager
+
 from jack_tokenizer import JackTokenizer, TokenType
 from symbol_table import SymbolTable
 from vm_writer import VMWriter
@@ -18,6 +20,7 @@ class CompilationEngine:
         self.symbol_table = SymbolTable()
         self.writer = VMWriter(fileout)
         self._before = None
+        self._branch_count = 0
 
         self.identifiers = {'(': self._method_call, '[': self._array_lookup, '.': self._method_call}
         self.methods = {
@@ -78,27 +81,34 @@ class CompilationEngine:
         self._define_var(var_type, var_kind)
 
     def compile_subroutine_dec(self, subroutine_type, token_type):
+        self._has_returned = False
+        self._is_method = False
         self.local_st = self.symbol_table.new_scope()
         if subroutine_type == 'method':
+            self._is_method = True
             self.local_st.define('this', self.classname, 'argument')
 
-        return_type, _ = self.advance() #TODO
+        return_type, _ = self.advance()
         subroutine_name, tt = self.advance()
         self.check_identifier(subroutine_name, tt)
-        self.writer.write('function' + self.classname + '.' + subroutine_name)
+        self.writer.write('function ' + self.classname + '.' + subroutine_name)
         if subroutine_type == 'constructor':
-            # push number of words to reserve
-            self.writer.write_push('constant', len(self.symbol_table)) # is this right? Should the number of words to reserve==the number of statics and fields?
+            self.writer.write_push('constant', self.symbol_table.var_count('field'))
             self.writer.write_call('Memory.alloc', 1)
+        else:
+            self.writer.write_push('argument', 0)
+        self.writer.write_pop('pointer', 0)
 
         self._advance_should_be('(')
         self.compile_param_list()
         self.compile_subroutine_body()
-        print(self.local_st)
+        if not self._has_returned:
         if return_type == 'void':
             self.writer.write_push('constant', 0)
             self.writer.write_return()
-            # self.writer.write_pop('temp', 0)
+            else:
+                self.syntax_error(f'Function should return type "{return_type}"')
+
 
     def _define_var(self, var_type, var_kind, local=False):
         st = self.local_st if local else self.symbol_table
@@ -125,10 +135,9 @@ class CompilationEngine:
 
     def compile_let(self, token, token_type):
         identifier = self.advance()
-        id_func = self._get_identifier() # This doesnt handle assignment to arrays yet - it would need to save the lookahead until the '=' and then call the id_func
-        self._advance_should_be('=') # similarly to the above statement, this would only be '=' if the expression was skipped
+        with self._get_identifier()(*identifier, define=True):
+            self._advance_should_be('=')
         self.compile_expression(end=';')
-        id_func(*identifier, define=True)
 
     def _advance_should_be(self, cmp):
         t,tt = self.advance()
@@ -136,68 +145,87 @@ class CompilationEngine:
             self.syntax_error(f'token "{t}" should be "{cmp}"')
 
     def compile_if(self, token, token_type):
+        c = str(self._branch_count)
         self._advance_should_be('(')
         self.compile_expression()
         self._advance_should_be('{')
         self.writer.write_arithmetic('not') # go to else
-        self.writer.write_if(self.classname+'.funcname.false')
+        self.writer.write_if(self.classname+'.if-false$'+c)
         self.compile_statements()
-        self.writer.write_goto(self.classname+'.funcname.end')
-        self.writer.write_label(self.classname+'.funcname.false')
+        self.writer.write_goto(self.classname+'.if-end$'+c)
+        self.writer.write_label(self.classname+'.if-false$'+c)
 
         self._compile(before=END_STMT.union({'else'}))
         if self._before[0] == 'else':
             self.advance()
             self._compile_else()
 
-        self.writer.write_label(self.classname+'.funcname.end')
+        self.writer.write_label(self.classname+'.if-end$'+c)
+        self._branch_count += 1
 
     def _compile_else(self):
         self._advance_should_be('{')
         self.compile_statements()
 
     def compile_while(self, token, token_type):
-        self.writer.write_label(self.classname+'.while-start') # Make unique
+        c = str(self._branch_count)
+        self.writer.write_label(self.classname+'.while-start$'+c)
         self.compile_expression()
         self._advance_should_be('{')
         self.writer.write_arithmetic('not')
-        self.writer.write_if(self.classname+'.while-end')
+        self.writer.write_if(self.classname+'.while-end$'+c)
         self.compile_statements()
-        self.writer.write_goto(self.classname+'.while-start')
-        self.writer.write_label(self.classname+'.while-end')
+        self.writer.write_goto(self.classname+'.while-start$'+c)
+        self.writer.write_label(self.classname+'.while-end$'+c)
+        self._branch_count += 1
 
     def compile_do(self, token, token_type):
-        self._method_call(end=')')
+        identifier = self.advance()
+        self._before = self.advance()
+        with self._method_call(*identifier, end=')'):
         self._advance_should_be(';')
         self.writer.write_pop('temp', 0)
 
-    def _method_call(self, token=None, token_type=None, end=')'):
-        methodname = ''
-        if token is not None: methodname += token
-        for var,var_type in self(before='('): # Fix method naming: Foo.bar, bar, ??
-            if var != '.': self.check_identifier(var, var_type)
+    @contextmanager
+    def _method_call(self, token, token_type, end=')'):
+        print(token)
+        if self._before[0] == '(' or token == 'this':
+            self.writer.write_push('pointer', 0)
+            methodname = self.classname
+        elif token in self.local_st:
+            with self._identifier_gen(token, token_type):
+                methodname = self.local_st.type_of(token)
+        else:
+            methodname = token
+
+        for var,var_type in self(before='('):
+            if var != '.':
+                self.check_identifier(var, var_type)
             methodname += var
         nlocals = self.compile_expression_list(end)
         self._advance_should_be(')')
         self.writer.write_call(methodname, nlocals)
+        yield
 
     def compile_return(self, token, token_type):
         out = self.compile_expression(end=';')
         self.writer.write_return()
+        self._has_returned = True
 
     def compile_expression(self, end=')', close_end=True):
         for i,(token, token_type) in enumerate(self(before=end)):
             self.compile_term(token, token_type, n=i)
         if close_end: self.advance()
 
+    @contextmanager
     def _array_lookup(self, token, token_type, define=False):
+        if not define: yield
         self._advance_should_be('[')
-        # _,segment,index = self.local_st[token]
-        # self.writer.write_push(segment, index)
-        self._identifier_gen(token, token_type)
+        with self._identifier_gen(token, token_type): pass
         self.compile_expression(end=']')
         self.writer.write_arithmetic('add') #base + expression
         if define:
+            yield
             self.writer.write_pop('temp', 0)    # Save expr2 to temp 0
             self.writer.write_pop('pointer', 1) # save THAT = base+offset
             self.writer.write_push('temp', 0)   # load the saved expr2
@@ -207,10 +235,16 @@ class CompilationEngine:
             self.writer.write_pop('pointer', 1)
             self.writer.write_push('that', 0)
 
-
+    @contextmanager
     def _identifier_gen(self, token, token_type, define=False):
+        "Push or pop the identifier value to the stack according to define."
+        yield
+        if token not in self.local_st:
+            self.syntax_error(f'Variable "{token}" used before defined.')
+
         _,segment,index = self.local_st[token]
         if segment == 'field':
+            if not self._is_method:
             self.writer.write_push('argument', 0)
             self.writer.write_pop('pointer', 0)
             segment = 'this'
@@ -221,34 +255,36 @@ class CompilationEngine:
         self._before = self.advance()
         return self.identifiers.get(self._before[0], self._identifier_gen)
 
-    def compile_term(self, first_token=None, first_type=None, end=')', n=0):
-        if first_type == TokenType.SYMBOL:
-            if first_token == '(':
+    def compile_term(self, token=None, token_type=None, end=')', n=0):
+        if token_type == TokenType.SYMBOL:
+            if token == '(':
                 self.compile_expression()
-            elif first_token in SYMBOLS or first_token == '~':
+            elif token in SYMBOLS or token == '~':
                 self.compile_term(*self.advance())
-                self.writer.write_arithmetic(self._decode_symbol(first_token, first_type, unary=n==0))
-            elif first_token in '*/':
+                self.writer.write_arithmetic(self._decode_symbol(token, token_type, unary=n==0))
+            elif token in '*/':
                 self.compile_term(*self.advance())
-                self.writer.write_call('Math.' + ('multiply' if first_token=='*' else 'divide'), 2)
+                self.writer.write_call('Math.' + ('multiply' if token=='*' else 'divide'), 2)
             else:
-                self.syntax_error('Unrecognized symbol "%s"' % first_token)
+                self.syntax_error('Unrecognized symbol "%s"' % token)
 
-        elif first_type == TokenType.IDENTIFIER:
-            id_func = self._get_identifier()
-            id_func(first_token, first_type)
-        elif first_type == TokenType.STRCNST:
-            self._build_string_constant(first_token)
-        elif first_type == TokenType.INTCNST:
-            self.writer.write_push('constant', first_token)
+        elif token_type == TokenType.IDENTIFIER:
+            with self._get_identifier()(token, token_type):
+                pass
+        elif token_type == TokenType.STRCNST:
+            self._build_string_constant(token)
+        elif token_type == TokenType.INTCNST:
+            self.writer.write_push('constant', token)
         else:
-            if first_token in {'false', 'true', 'null'}:
-                self.writer.write_push('constant', KEYWORDS_VALUES[first_token])
-                if first_token == 'true': self.writer.write_arithmetic('neg')
-            elif first_token == 'this':
-                self.writer.write_push('this', 0)
+            if token in {'false', 'true', 'null'}:
+                self.writer.write_push('constant', KEYWORDS_VALUES[token])
+                if token == 'true': self.writer.write_arithmetic('neg')
+            elif token == 'this':
+                self._before = self.advance()
+                if self._before[0] != '.': self.writer.write_push('pointer', 0)
+                else: self._method_call(token, token_type)
         else:
-                self.syntax_error('Expected expression but found "%s"' % first_token)
+                self.syntax_error('Expected expression but found "%s"' % token)
 
     def _decode_symbol(self, token, token_type, unary=False):
         return SYMBOLS_UNARY[token] if unary else SYMBOLS[token]
