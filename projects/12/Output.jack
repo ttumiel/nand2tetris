@@ -6,33 +6,49 @@
 /**
  * A library of functions for writing text on the screen.
  * The Hack physical screen consists of 512 rows of 256 pixels each.
- * The library uses a fixed font, in which each character is displayed 
- * within a frame which is 11 pixels high (including 1 pixel for inter-line 
+ * The library uses a fixed font, in which each character is displayed
+ * within a frame which is 11 pixels high (including 1 pixel for inter-line
  * spacing) and 8 pixels wide (including 2 pixels for inter-character spacing).
  * The resulting grid accommodates 23 rows (indexed 0..22, top to bottom)
- * of 64 characters each (indexed 0..63, left to right). The top left 
+ * of 64 characters each (indexed 0..63, left to right). The top left
  * character position on the screen is indexed (0,0). A cursor, implemented
  * as a small filled square, indicates where the next character will be displayed.
  */
 class Output {
 
     // Character map for displaying characters
-    static Array charMaps; 
+    static Array charMaps, cursor;
+    static int cursorX, cursorY;
 
     /** Initializes the screen, and locates the cursor at the screen's top-left. */
     function void init() {
+        let cursorX = 0;
+        let cursorY = 0;
+
+        let cursor = Array.new(11);
+        let cursor[0] = 3;
+        let cursor[1] = 3;
+        let cursor[2] = 3;
+        let cursor[3] = 3;
+        let cursor[4] = 3;
+        let cursor[5] = 3;
+        let cursor[6] = 3;
+        let cursor[7] = 3;
+        let cursor[8] = 3;
+        let cursor[9] = 3;
+        let cursor[10] = 3;
     }
 
     // Initializes the character map array
     function void initMap() {
         var int i;
-    
+
         let charMaps = Array.new(127);
-        
+
         // Black square, used for displaying non-printable characters.
         do Output.create(0,63,63,63,63,63,63,63,63,63,0,0);
 
-        // Assigns the bitmap for each character in the charachter set.
+        // Assigns the bitmap for each character in the character set.
         // The first parameter is the character index, the next 11 numbers
         // are the values of each row in the frame that represents this character.
         do Output.create(32,0,0,0,0,0,0,0,0,0,0,0);          //
@@ -49,9 +65,9 @@ class Output {
         do Output.create(43,0,0,0,12,12,63,12,12,0,0,0);     // +
         do Output.create(44,0,0,0,0,0,0,0,12,12,6,0);        // ,
         do Output.create(45,0,0,0,0,0,63,0,0,0,0,0);         // -
-        do Output.create(46,0,0,0,0,0,0,0,12,12,0,0);        // .    
+        do Output.create(46,0,0,0,0,0,0,0,12,12,0,0);        // .
         do Output.create(47,0,0,32,48,24,12,6,3,1,0,0);      // /
-        
+
         do Output.create(48,12,30,51,51,51,51,51,30,12,0,0); // 0
         do Output.create(49,12,14,15,12,12,12,12,12,63,0,0); // 1
         do Output.create(50,30,51,48,24,12,6,3,51,63,0,0);   // 2
@@ -62,7 +78,7 @@ class Output {
         do Output.create(55,63,49,48,48,24,12,12,12,12,0,0); // 7
         do Output.create(56,30,51,51,51,30,51,51,51,30,0,0); // 8
         do Output.create(57,30,51,51,51,62,48,48,24,14,0,0); // 9
-        
+
         do Output.create(58,0,0,12,12,0,0,12,12,0,0,0);      // :
         do Output.create(59,0,0,12,12,0,0,12,12,6,0,0);      // ;
         do Output.create(60,0,0,24,12,6,3,6,12,24,0,0);      // <
@@ -71,7 +87,7 @@ class Output {
         do Output.create(64,30,51,51,59,59,59,27,3,30,0,0);  // @
         do Output.create(63,30,51,51,24,12,12,0,12,12,0,0);  // ?
 
-        do Output.create(65,0,0,0,0,0,0,0,0,0,0,0);          // A ** TO BE FILLED **
+        do Output.create(65,12,30,51,51,51,63,63,51,51,0,0); // A
         do Output.create(66,31,51,51,51,31,51,51,51,31,0,0); // B
         do Output.create(67,28,54,35,3,3,3,35,54,28,0,0);    // C
         do Output.create(68,15,27,51,51,51,51,51,27,15,0,0); // D
@@ -131,7 +147,7 @@ class Output {
         do Output.create(120,0,0,0,51,30,12,12,30,51,0,0);     // x
         do Output.create(121,0,0,0,51,51,51,62,48,24,15,0);    // y
         do Output.create(122,0,0,0,63,27,12,6,51,63,0,0);      // z
-        
+
         do Output.create(123,56,12,12,12,7,12,12,12,56,0,0);   // {
         do Output.create(124,12,12,12,12,12,12,12,12,12,0,0);  // |
         do Output.create(125,7,12,12,12,56,12,12,12,7,0,0);    // }
@@ -143,9 +159,9 @@ class Output {
     // Creates the character map array of the given character index, using the given values.
     function void create(int index, int a, int b, int c, int d, int e,
                          int f, int g, int h, int i, int j, int k) {
-	var Array map;
+        var Array map;
 
-	let map = Array.new(11);
+        let map = Array.new(11);
         let charMaps[index] = map;
 
         let map[0] = a;
@@ -162,7 +178,7 @@ class Output {
 
         return;
     }
-    
+
     // Returns the character map (array of size 11) of the given character.
     // If the given character is invalid or non-printable, returns the
     // character map of a black square.
@@ -176,28 +192,82 @@ class Output {
     /** Moves the cursor to the j-th column of the i-th row,
      *  and erases the character displayed there. */
     function void moveCursor(int i, int j) {
+        var boolean color;
+
+        do drawMap(getMap(32));
+        let cursorX = i;
+        let cursorY = j;
+        do drawMap(cursor);
     }
 
     /** Displays the given character at the cursor location,
      *  and advances the cursor one column forward. */
     function void printChar(char c) {
+        if (c = String.backSpace()){
+            do backSpace();
+            return;
+        }
+        if (c = String.newLine()){
+            do println();
+            return;
+        }
+
+        do drawMap(getMap(c));
+
+        if (cursorX = 63){
+            do println();
+        } else {
+            do moveCursor(cursorX+1, cursorY);
+        }
+        return;
+    }
+
+    function void drawMap(Array map){
+        var int x, y, row, topX, topY;
+
+        let y = 0;
+        let topX = cursorX*8;
+        let topY = cursorY*11;
+        while (y<11){
+            let x = 0;
+            let row = map[y];
+            while (x<8){
+                do Screen.setColor(Math.bit(row, x));
+                do Screen.drawPixel(topX+x, topY+y);
+                let x = x + 1;
+            }
+            let y = y + 1;
+        }
     }
 
     /** displays the given string starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printString(String s) {
+        var int i;
+
+        let i = 0;
+        while (i<s.length()){
+            do printChar(s[i]);
+            let i = i + 1;
+        }
     }
 
     /** Displays the given integer starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printInt(int i) {
+        var String s;
+        let s = String.new(64);
+        do s.setInt(i);
+        do printString(s);
     }
 
     /** Advances the cursor to the beginning of the next line. */
     function void println() {
+        do moveCursor(0, cursorY+1);
     }
 
     /** Moves the cursor one column back. */
     function void backSpace() {
+        do moveCursor(cursorX-1, cursorY);
     }
 }

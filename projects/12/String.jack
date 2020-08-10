@@ -11,54 +11,115 @@
  * string-oriented operations.
  */
 class String {
+    field Array chars;
+    field int len;
 
     /** constructs a new empty string with a maximum length of maxLength
      *  and initial length of 0. */
     constructor String new(int maxLength) {
+        let chars = Array.new(maxLength);
+        let len = 0;
+        return this;
     }
 
     /** Disposes this string. */
     method void dispose() {
+        do chars.dispose();
+        do Memory.deAlloc(this);
     }
 
     /** Returns the current length of this string. */
     method int length() {
+        return len;
     }
 
     /** Returns the character at the j-th location of this string. */
     method char charAt(int j) {
+        return chars[j];
     }
 
     /** Sets the character at the j-th location of this string to c. */
     method void setCharAt(int j, char c) {
+        let chars[j] = c;
     }
 
     /** Appends c to this string's end and returns this string. */
     method String appendChar(char c) {
+        let chars[len] = c;
+        let len = len + 1;
+        return this;
     }
 
     /** Erases the last character from this string. */
     method void eraseLastChar() {
+        let len = len - 1;
+        let chars[len] = 0;
     }
 
-    /** Returns the integer value of this string, 
+    /** Returns the integer value of this string,
      *  until a non-digit character is detected. */
     method int intValue() {
+        var int val, i;
+
+        let i = 0;
+        let val = 0;
+        while ((i<len) & (chars[i]<58) & (chars[i]>47)){
+            let val = val*10 + (char2int(chars[i]));
+            let i = i + 1;
+        }
+        return val;
     }
 
     /** Sets this string to hold a representation of the given value. */
     method void setInt(int val) {
+        var int d;
+
+        let len = 0;
+        while (~(val=0)){
+            let d = Math.mod(val, 10);
+            do appendChar(int2char(d));
+            let val = val / 10;
+        }
     }
 
     /** Returns the new line character. */
     function char newLine() {
+        return 128;
     }
 
     /** Returns the backspace character. */
     function char backSpace() {
+        return 129;
     }
 
     /** Returns the double quote (") character. */
     function char doubleQuote() {
+        return 34;
+    }
+
+    function int char2int(char c) {
+        if (c = 48){ return 0; }
+        if (c = 49){ return 1; }
+        if (c = 50){ return 2; }
+        if (c = 51){ return 3; }
+        if (c = 52){ return 4; }
+        if (c = 53){ return 5; }
+        if (c = 54){ return 6; }
+        if (c = 55){ return 7; }
+        if (c = 56){ return 8; }
+        if (c = 57){ return 9; }
+    }
+
+    function char int2char(int i) {
+        if (i = 0){ return 48; }
+        if (i = 1){ return 49; }
+        if (i = 2){ return 50; }
+        if (i = 3){ return 51; }
+        if (i = 4){ return 52; }
+        if (i = 5){ return 53; }
+        if (i = 6){ return 54; }
+        if (i = 7){ return 55; }
+        if (i = 8){ return 56; }
+        if (i = 9){ return 57; }
     }
 }

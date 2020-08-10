@@ -8,9 +8,12 @@
  */
 class Keyboard {
 
+    static int address;
+
     /** Initializes the keyboard. */
     function void init() {
-    } 
+        let address = 24576;
+    }
 
     /**
      * Returns the character of the currently pressed key on the keyboard;
@@ -33,30 +36,57 @@ class Keyboard {
      * F1 - F12 = 141 - 152
      */
     function char keyPressed() {
+        return Memory.peek(address);
     }
 
-    /**								
+    /**
      * Waits until a key is pressed on the keyboard and released,
-     * then echoes the key to the screen, and returns the character 
+     * then echoes the key to the screen, and returns the character
      * of the pressed key.
      */
     function char readChar() {
+        var char c;
+
+        while (~keyPressed()){}
+        let c = keyPressed();
+        while (keyPressed()){}
+        Output.printChar(c);
+        return c;
     }
 
-    /**								
+    /**
      * Displays the message on the screen, reads from the keyboard the entered
      * text until a newline character is detected, echoes the text to the screen,
      * and returns its value. Also handles user backspaces.
      */
     function String readLine(String message) {
-    }   
+        var char c;
+        var String s;
 
-    /**								
+        do Output.printString(message);
+
+        let s = String.new(64);
+        let c = 0;
+        while(~(c=128)){
+            let c = readChar();
+            if (c == 129){
+                do s.eraseLastChar();
+            } else {
+                do s.appendChar(c);
+            }
+        }
+        return s;
+    }
+
+    /**
      * Displays the message on the screen, reads from the keyboard the entered
      * text until a newline character is detected, echoes the text to the screen,
      * and returns its integer value (until the first non-digit character in the
-     * entered text is detected). Also handles user backspaces. 
+     * entered text is detected). Also handles user backspaces.
      */
     function int readInt(String message) {
+        var String line;
+        let line = readLine(message);
+        return line.intValue();
     }
 }
