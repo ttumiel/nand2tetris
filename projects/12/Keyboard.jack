@@ -13,6 +13,7 @@ class Keyboard {
     /** Initializes the keyboard. */
     function void init() {
         let address = 24576;
+        return;
     }
 
     /**
@@ -47,10 +48,10 @@ class Keyboard {
     function char readChar() {
         var char c;
 
-        while (~keyPressed()){}
-        let c = keyPressed();
-        while (keyPressed()){}
-        Output.printChar(c);
+        while (Keyboard.keyPressed()=0){}
+        let c = Keyboard.keyPressed();
+        while (~(Keyboard.keyPressed()=0)){}
+        do Output.printChar(c);
         return c;
     }
 
@@ -66,14 +67,14 @@ class Keyboard {
         do Output.printString(message);
 
         let s = String.new(64);
-        let c = 0;
+        let c = Keyboard.readChar();
         while(~(c=128)){
-            let c = readChar();
-            if (c == 129){
+            if (c = 129){
                 do s.eraseLastChar();
             } else {
                 do s.appendChar(c);
             }
+            let c = Keyboard.readChar();
         }
         return s;
     }
@@ -86,7 +87,7 @@ class Keyboard {
      */
     function int readInt(String message) {
         var String line;
-        let line = readLine(message);
+        let line = Keyboard.readLine(message);
         return line.intValue();
     }
 }

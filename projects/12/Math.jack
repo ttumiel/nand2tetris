@@ -31,8 +31,9 @@ class Math {
         let powersOf2[12] = 4096;
         let powersOf2[13] = 8192;
         let powersOf2[14] = 16384;
-        let powersOf2[15] = 32768;
+        let powersOf2[15] = 16384+16384;
 
+        return;
     }
 
     /** Returns the absolute value of x. */
@@ -46,7 +47,7 @@ class Math {
 
     /** Returns true if the i'th bit of x is 1 */
     function boolean bit(int x, int i) {
-        return (x & powersOf2[i]) > 0; // Do i need the gt 0?
+        return ~((x & powersOf2[i]) = 0);
     }
 
     /** Returns the product of x and y.
@@ -78,13 +79,25 @@ class Math {
      */
     function int divide(int x, int y) {
         var int quot;
+        var boolean negX, negY;
 
-        if ((y>x) | (y<0)){ return 0; }
+        let negX = x<0;
+        let negY = y<0;
+        let x = Math.abs(x);
+        let y = Math.abs(y);
+
+        if (y>x){ return 0; }
         let quot = x / (y+y);
         if(x-(2*quot*y) < y){
-            return 2*qout;
+            let quot = quot+quot;
         } else {
-            return 2*quot+1;
+            let quot = quot+quot+1;
+        }
+
+        if (negX = negY){
+            return quot;
+        } else {
+            return -quot;
         }
     }
 
@@ -92,14 +105,15 @@ class Math {
     function int sqrt(int x) {
         var int i, out, tmpSum, tmpProd;
 
-        let i = (bitWidth/2) - 1;
+        let i = 7; // (bitWidth/2) - 1;
         let out = 0;
-        while (i > -1){
+        while (~(i < 0)){
             let tmpSum = out + powersOf2[i];
             let tmpProd = tmpSum*tmpSum;
-            if ((tmpProd<x) | (tmpProd=x) & (tmpProd>0)){
+            if (~(tmpProd>x) & (tmpProd>0)){
                 let out = tmpSum;
             }
+            let i = i - 1;
         }
         return out;
     }
@@ -126,4 +140,16 @@ class Math {
     function int mod(int a, int b){
         return a - (a/b*b);
     }
+
+    /** Sets the ith bit of x to y */
+    function int setBit(int x, int i, boolean y){
+        var int val;
+        if (y){
+            return x | powersOf2[i];
+        }
+        else {
+            return x & (~powersOf2[i]);
+        }
+    }
+
 }

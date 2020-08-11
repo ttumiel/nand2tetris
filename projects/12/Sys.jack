@@ -11,18 +11,21 @@ class Sys {
 
     /** Performs all the initializations required by the OS. */
     function void init() {
-        let cycles1ms = 5000; // Clockspeed / 1000
+        let cycles1ms = 100; // Clockspeed / 1000
         do Screen.init();
         do Keyboard.init();
         do Math.init();
         do Memory.init();
         do Output.init();
         do Main.main();
+        do Sys.halt();
+        return;
     }
 
     /** Halts the program execution. */
     function void halt() {
         while (true){}
+        return;
     }
 
     /** Waits approximately duration milliseconds and returns.  */
@@ -35,16 +38,15 @@ class Sys {
             while(j<cycles1ms){ let j = j + 1; }
             let i = i + 1;
         }
+        return;
     }
 
     /** Displays the given error code in the form "ERR<errorCode>",
      *  and halts the program's execution. */
     function void error(int errorCode) {
-        var String c;
-        let c = String.new(5);
         do Output.printString("ERR");
-        do c.setInt(errorCode);
-        do Output.printString(c);
+        do Output.printInt(errorCode);
         do Sys.halt();
+        return;
     }
 }
