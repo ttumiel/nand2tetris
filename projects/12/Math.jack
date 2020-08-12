@@ -78,7 +78,7 @@ class Math {
      *  the Jack expressions x/y and divide(x,y) return the same value.
      */
     function int divide(int x, int y) {
-        var int quot;
+        var int quot, nextY;
         var boolean negX, negY;
 
         let negX = x<0;
@@ -87,7 +87,9 @@ class Math {
         let y = Math.abs(y);
 
         if (y>x){ return 0; }
-        let quot = x / (y+y);
+        let nextY = y+y;
+        if (nextY<0){ let quot = 0; }
+        else{ let quot = x / nextY; }
         if(x-(2*quot*y) < y){
             let quot = quot+quot;
         } else {
