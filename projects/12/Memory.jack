@@ -7,28 +7,69 @@
  * This library provides two services: direct access to the computer's main
  * memory (RAM), and allocation and recycling of memory blocks. The Hack RAM
  * consists of 32,768 words, each holding a 16-bit binary number.
- */ 
+ */
 class Memory {
+    static Array ram, heap, freeList, curBlock, prevBlock;
 
     /** Initializes the class. */
     function void init() {
+        let ram = 0;
+        let heap = 2048;
+        let freeList = heap;
+        let curBlock = freeList;
+        let heap[0] = 0;
+        let heap[1] = 14334;
+        let prevBlock = null;
+        return;
     }
 
     /** Returns the RAM value at the given address. */
     function int peek(int address) {
+        return ram[address];
     }
 
     /** Sets the RAM value at the given address to the given value. */
     function void poke(int address, int value) {
+        let ram[address] = value;
+        return;
     }
 
     /** Finds an available RAM block of the given size and returns
      *  a reference to its base address. */
     function int alloc(int size) {
+        var Array nxtAddr;
+        var int block, curSize, nxtSize;
+
+        let curSize = curBlock[1];
+        if (~(curSize < (size+2))){               // if the requested size <= available size
+            let nxtSize = curSize-size-2;     // The size of the remaining heap block
+            let block = curBlock+2;           // The block to return
+            let curBlock[1] = null;           // Set the allocated block's size; Useful for deAlloc // Set to 0
+
+            let nxtAddr = curBlock+size+2;    // The remaining heap block's address
+            let nxtAddr[0] = curBlock[0];     // Point the new block to the next block in the chain
+            let nxtAddr[1] = nxtSize;         // Set the size of the new block
+            let curBlock[0] = nxtAddr;        // Point the current block to the new block
+            let curBlock = freeList;          // Reset the curBlock to the start of the freeList
+            return block;
+        }
+        if (curBlock[0] = null){              // There is no next block: attempt defrag or terminate OOM
+            do Sys.error(300);
+            return 0;
+        }
+
+        // Check the next block
+        let prevBlock = curBlock;
+        let curBlock = curBlock[0];
+        return Memory.alloc(size);
     }
 
     /** De-allocates the given object (cast as an array) by making
      *  it available for future allocations. */
     function void deAlloc(Array o) {
-    }    
+        var int size;
+        let size = ram[o-2] - o;
+        let ram[o-1] = size; // ?? how to get length??
+        return;
+    }
 }

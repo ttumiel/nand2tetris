@@ -17,6 +17,7 @@ class String {
     /** constructs a new empty string with a maximum length of maxLength
      *  and initial length of 0. */
     constructor String new(int maxLength) {
+        if (maxLength = 0){ let maxLength = 1; }
         let chars = Array.new(maxLength);
         let len = 0;
         return this;
@@ -26,6 +27,7 @@ class String {
     method void dispose() {
         do chars.dispose();
         do Memory.deAlloc(this);
+        return;
     }
 
     /** Returns the current length of this string. */
@@ -41,6 +43,7 @@ class String {
     /** Sets the character at the j-th location of this string to c. */
     method void setCharAt(int j, char c) {
         let chars[j] = c;
+        return;
     }
 
     /** Appends c to this string's end and returns this string. */
@@ -54,32 +57,53 @@ class String {
     method void eraseLastChar() {
         let len = len - 1;
         let chars[len] = 0;
+        return;
     }
 
     /** Returns the integer value of this string,
      *  until a non-digit character is detected. */
     method int intValue() {
         var int val, i;
+        var boolean neg;
 
         let i = 0;
+        let neg = false;
+        if (chars[0] = 45){
+            let neg = true;
+            let i = 1;
+        }
+
         let val = 0;
         while ((i<len) & (chars[i]<58) & (chars[i]>47)){
-            let val = val*10 + (char2int(chars[i]));
+            let val = val*10 + (String.char2int(chars[i]));
             let i = i + 1;
         }
-        return val;
+        if (neg){ return -val; }
+        else { return val; }
     }
 
     /** Sets this string to hold a representation of the given value. */
     method void setInt(int val) {
-        var int d;
-
         let len = 0;
-        while (~(val=0)){
-            let d = Math.mod(val, 10);
-            do appendChar(int2char(d));
-            let val = val / 10;
+        if (val < 0){
+            do Output.printString("NEG");
+            do appendChar(45);
+            let val = -val;
         }
+        do i2s(val);
+        return;
+    }
+
+    method void i2s (int val){
+        var int d;
+        if (val>9){
+            let d = Math.mod(val, 10);
+            do i2s(val / 10);
+            do appendChar(String.int2char(d));
+        } else {
+            do appendChar(String.int2char(val));
+        }
+        return;
     }
 
     /** Returns the new line character. */
@@ -108,6 +132,7 @@ class String {
         if (c = 55){ return 7; }
         if (c = 56){ return 8; }
         if (c = 57){ return 9; }
+        return -1;
     }
 
     function char int2char(int i) {
@@ -121,5 +146,6 @@ class String {
         if (i = 7){ return 55; }
         if (i = 8){ return 56; }
         if (i = 9){ return 57; }
+        return -1;
     }
 }
